@@ -1,0 +1,5 @@
+{
+  "name": "Copy of KafkaViz - Interactive Kafka Learner",
+  "description": "A visual, interactive playground to learn Apache Kafka concepts (Producers, Topics, Partitions, Consumers) with a Gemini-powered AI tutor.",
+  "requestFramePermissions": []
+}
