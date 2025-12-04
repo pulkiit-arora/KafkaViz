@@ -1,13 +1,28 @@
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 
 // Initialize the client. The API key is injected via the environment.
-// In a real build step, ensure process.env.API_KEY is replaced or available.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const apiKey = process.env.API_KEY;
+let ai: GoogleGenAI | null = null;
+
+// Only attempt to initialize if a key exists
+if (apiKey) {
+  try {
+    ai = new GoogleGenAI({ apiKey });
+  } catch (error) {
+    console.error("Failed to initialize GoogleGenAI client:", error);
+  }
+} else {
+  console.warn("Gemini API Key is missing. AI features will be disabled.");
+}
 
 export const askGeminiTutor = async (
   question: string,
   context: string
 ): Promise<string> => {
+  if (!ai) {
+    return "The AI Tutor is currently unavailable because the API Key is missing. Please configure the API_KEY in your environment variables or GitHub Secrets.";
+  }
+
   try {
     const model = "gemini-2.5-flash";
     const systemInstruction = `
@@ -41,6 +56,6 @@ Rules:
     return response.text || "I couldn't generate an answer right now.";
   } catch (error) {
     console.error("Gemini API Error:", error);
-    return "Sorry, I'm having trouble connecting to my brain (the API). Please try again.";
+    return "Sorry, I'm having trouble connecting to my brain (the API). Please try again later.";
   }
 };
