@@ -31,6 +31,8 @@ import { formatMessageLabel } from './utils';
 
 // State to track offsets: GroupID -> TopicID -> PartitionID -> NextOffset
 type GroupOffsets = Record<string, Record<string, Record<number, number>>>;
+// State to track partition assignments: GroupID -> TopicID -> PartitionID -> ConsumerId (null if unassigned)
+type PartitionAssignments = Record<string, Record<string, Record<number, string | null>>>;
 
 const App: React.FC = () => {
   const [topics, setTopics] = useState<Topic[]>(INITIAL_TOPICS);
@@ -40,6 +42,7 @@ const App: React.FC = () => {
   const [msgCounter, setMsgCounter] = useState<number>(1);
   const [consumerSeq, setConsumerSeq] = useState<number>(1); // For sequential naming
   const [groupOffsets, setGroupOffsets] = useState<GroupOffsets>({});
+  const [partitionAssignments, setPartitionAssignments] = useState<PartitionAssignments>({});
 
   // UI States
   const [isConsumerModalOpen, setIsConsumerModalOpen] = useState(false);
@@ -58,6 +61,7 @@ const App: React.FC = () => {
     setMsgCounter(1);
     setConsumerSeq(1);
     setGroupOffsets({});
+    setPartitionAssignments({});
     setLogs([]);
     addLog("Simulation reset.", 'info');
   };
@@ -93,13 +97,52 @@ const App: React.FC = () => {
       setConsumerSeq(prev => prev + 1);
     }
     
-    setConsumers([...consumers, { 
+    setConsumers(prev => [...prev, { 
       id, 
       name, 
       groupId, 
       subscribedTopicId: topicId || (topics[0]?.id ?? null) 
     }]);
+
+    // Rebalance partitions for this group
+    rebalancePartitions(groupId, topicId || (topics[0]?.id ?? null), [...consumers, { 
+      id, 
+      name, 
+      groupId, 
+      subscribedTopicId: topicId || (topics[0]?.id ?? null) 
+    }]);
+    
     addLog(`Added ${name} to Group "${groupId}"`, 'info');
+  };
+
+  // Rebalance partitions: Assign each partition to one consumer in the group
+  const rebalancePartitions = (groupId: string, topicId: string | null, updatedConsumers: Consumer[]) => {
+    if (!topicId) return;
+
+    const groupConsumers = updatedConsumers.filter(c => c.groupId === groupId && c.subscribedTopicId === topicId);
+    const topic = topics.find(t => t.id === topicId);
+    
+    if (!topic || groupConsumers.length === 0) return;
+
+    const newAssignments: PartitionAssignments = {
+      ...partitionAssignments,
+      [groupId]: {
+        ...partitionAssignments[groupId],
+        [topicId]: {}
+      }
+    };
+
+    // Round-robin assign partitions to consumers
+    groupConsumers.forEach((consumer, index) => {
+      topic.partitions.forEach((partition, pIndex) => {
+        if (pIndex % groupConsumers.length === index) {
+          newAssignments[groupId][topicId][partition.id] = consumer.id;
+        }
+      });
+    });
+
+    setPartitionAssignments(newAssignments);
+    addLog(`Rebalanced Group "${groupId}": ${groupConsumers.length} consumer(s) assigned to ${topic.partitions.length} partitions`, 'info');
   };
 
   const handleSubscribe = (consumerId: string, topicId: string) => {
@@ -172,12 +215,19 @@ const App: React.FC = () => {
     // Determine Consumer Group Progress
     const groupState = groupOffsets[consumer.groupId] || {};
     const topicOffsets = groupState[topic.id] || {};
+    const assignments = partitionAssignments[consumer.groupId]?.[topic.id] || {};
 
     let chosenPartition: Partition | null = null;
     let msgToConsume: Message | null = null;
 
-    // Look for a partition with available messages for this Group's Offset
+    // Only look at partitions assigned to THIS consumer
     for (const partition of topic.partitions) {
+        // Check if this partition is assigned to this consumer
+        const assignedConsumerId = assignments[partition.id];
+        if (assignedConsumerId !== consumerId) {
+            continue; // This partition is assigned to another consumer or unassigned
+        }
+
         const expectedOffset = topicOffsets[partition.id] || 0;
         
         // Find message with the expected offset
@@ -239,7 +289,7 @@ const App: React.FC = () => {
     }));
 
     addLog(`${consumer.name} consumed "${formatMessageLabel(msgToConsume.content, msgToConsume.offset)}" from [Part-${chosenPartition.id}]`, 'info');
-  }, [consumers, topics, groupOffsets]);
+  }, [consumers, topics, groupOffsets, partitionAssignments, addLog]);
 
   const removeEntity = (type: 'producer' | 'consumer', id: string) => {
     if (type === 'producer') {
@@ -249,8 +299,16 @@ const App: React.FC = () => {
     }
     if (type === 'consumer') {
       const c = consumers.find(x => x.id === id);
-      if (c) addLog(`Removed Consumer: ${c.name}`, 'info');
-      setConsumers(prev => prev.filter(x => x.id !== id));
+      if (c) {
+        addLog(`Removed Consumer: ${c.name}`, 'info');
+        const updatedConsumers = consumers.filter(x => x.id !== id);
+        setConsumers(updatedConsumers);
+        
+        // Rebalance the group
+        if (c.subscribedTopicId) {
+          rebalancePartitions(c.groupId, c.subscribedTopicId, updatedConsumers);
+        }
+      }
     }
   };
 
