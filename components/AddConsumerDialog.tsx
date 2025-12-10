@@ -38,7 +38,7 @@ export const AddConsumerDialog: React.FC<AddConsumerDialogProps> = ({
         setSelectedTopic(topics[0].id);
       }
     }
-  }, [isOpen, existingGroups, topics]);
+  }, [isOpen, topics]);
 
   if (!isOpen) return null;
 
@@ -83,7 +83,7 @@ export const AddConsumerDialog: React.FC<AddConsumerDialogProps> = ({
                 type="button"
                 onClick={() => { 
                    if (!isNewGroup) {
-                      setGroupId(''); // Clear for typing new
+                      setGroupId('group-new'); // Set a default value instead of empty
                       setIsNewGroup(true);
                    } else if (existingGroups.length > 0) {
                       setGroupId(existingGroups[0]);
