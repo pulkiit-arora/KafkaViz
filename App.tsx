@@ -48,6 +48,39 @@ const App: React.FC = () => {
   const [isConsumerModalOpen, setIsConsumerModalOpen] = useState(false);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
 
+  // Initialize partition assignments for default consumers on mount
+  React.useEffect(() => {
+    if (Object.keys(partitionAssignments).length === 0 && INITIAL_CONSUMERS.length > 0) {
+      // Build assignments for all initial consumer groups
+      const initialAssignments: PartitionAssignments = {};
+      
+      INITIAL_CONSUMERS.forEach(consumer => {
+        const topic = INITIAL_TOPICS.find(t => t.id === consumer.subscribedTopicId);
+        if (!topic) return;
+        
+        if (!initialAssignments[consumer.groupId]) {
+          initialAssignments[consumer.groupId] = {};
+        }
+        if (!initialAssignments[consumer.groupId][consumer.subscribedTopicId]) {
+          initialAssignments[consumer.groupId][consumer.subscribedTopicId] = {};
+        }
+        
+        // Assign each partition to a consumer in the group
+        const groupConsumers = INITIAL_CONSUMERS.filter(c => 
+          c.groupId === consumer.groupId && c.subscribedTopicId === consumer.subscribedTopicId
+        );
+        
+        topic.partitions.forEach((partition, index) => {
+          const assignedConsumerIndex = index % groupConsumers.length;
+          initialAssignments[consumer.groupId][consumer.subscribedTopicId][partition.id] = 
+            groupConsumers[assignedConsumerIndex].id;
+        });
+      });
+      
+      setPartitionAssignments(initialAssignments);
+    }
+  }, []);
+
   // --- Actions ---
 
   const addLog = (text: string, type: 'info' | 'success' | 'error' = 'info') => {
