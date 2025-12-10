@@ -12,12 +12,14 @@ import {
   Consumer, 
   LogEntry, 
   Message,
-  Partition
+  Partition,
+  Broker
 } from './types';
 import { 
   INITIAL_TOPICS, 
   INITIAL_PRODUCERS, 
   INITIAL_CONSUMERS, 
+  INITIAL_BROKERS,
   MAX_MESSAGES_PER_PARTITION 
 } from './constants';
 import { ProducerNode } from './components/Visualizer/ProducerNode';
@@ -38,6 +40,7 @@ const App: React.FC = () => {
   const [topics, setTopics] = useState<Topic[]>(INITIAL_TOPICS);
   const [producers, setProducers] = useState<Producer[]>(INITIAL_PRODUCERS);
   const [consumers, setConsumers] = useState<Consumer[]>(INITIAL_CONSUMERS);
+  const [brokers, setBrokers] = useState<Broker[]>(INITIAL_BROKERS);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [msgCounter, setMsgCounter] = useState<number>(1);
   const [consumerSeq, setConsumerSeq] = useState<number>(1); // For sequential naming
@@ -111,13 +114,13 @@ const App: React.FC = () => {
       id: `topic-${id}`,
       name: `Topic-${id}`,
       partitions: [
-        { id: 0, messages: [], nextOffset: 0 },
-        { id: 1, messages: [], nextOffset: 0 },
-        { id: 2, messages: [], nextOffset: 0 },
+        { id: 0, messages: [], nextOffset: 0, leaderBrokerId: 1, replicaBrokerIds: [1, 2] },
+        { id: 1, messages: [], nextOffset: 0, leaderBrokerId: 2, replicaBrokerIds: [2, 3] },
+        { id: 2, messages: [], nextOffset: 0, leaderBrokerId: 3, replicaBrokerIds: [3, 1] },
       ]
     };
     setTopics([...topics, newTopic]);
-    addLog(`Created new Topic: ${newTopic.name}`, 'success');
+    addLog(`Created new Topic: ${newTopic.name} with broker assignments`, 'success');
   };
 
   const handleAddConsumer = (groupId: string, topicId: string, customName: string) => {
@@ -188,7 +191,7 @@ const App: React.FC = () => {
     addLog(`Consumer updated subscription to topic`, 'info');
   };
 
-  const handleProduce = useCallback((producerId: string, topicId: string, _content: string) => {
+  const handleProduce = useCallback((producerId: string, topicId: string, _content: string, key?: string) => {
     // Generate content. We use msgCounter for content, but Partitions manage their own Offset ID.
     const content = `Msg-${msgCounter}`;
     setMsgCounter(prev => prev + 1);
@@ -199,8 +202,25 @@ const App: React.FC = () => {
       if (topicIndex === -1) return prevTopics;
 
       const topic = newTopics[topicIndex];
-      // Round-robin selection
-      const partitionIndex = Math.floor(Math.random() * topic.partitions.length);
+      
+      // Key-based partitioning strategy
+      let partitionIndex: number;
+      if (key) {
+        // Use hash of key to determine partition (consistent hashing)
+        let hash = 0;
+        for (let i = 0; i < key.length; i++) {
+          const char = key.charCodeAt(i);
+          hash = ((hash << 5) - hash) + char;
+          hash = hash & hash; // Convert to 32-bit integer
+        }
+        partitionIndex = Math.abs(hash) % topic.partitions.length;
+        addLog(`Key "${key}" hashed to partition ${partitionIndex}`, 'info');
+      } else {
+        // Round-robin selection for messages without keys
+        partitionIndex = Math.floor(Math.random() * topic.partitions.length);
+        addLog(`No key provided - using round-robin partition ${partitionIndex}`, 'info');
+      }
+      
       const partition = topic.partitions[partitionIndex];
 
       let currentMessages = [...partition.messages];
@@ -218,6 +238,7 @@ const App: React.FC = () => {
 
       const newMessage: Message = {
         id: Math.random().toString(36),
+        key,
         content,
         timestamp: Date.now(),
         offset
@@ -232,7 +253,8 @@ const App: React.FC = () => {
 
       newTopics[topicIndex] = { ...topic, partitions: newPartitions };
       
-      addLog(`Produced "${formatMessageLabel(content, offset)}" to ${topic.name} [Part-${partition.id}]`, 'success');
+      const keyDisplay = key ? ` (key: ${key})` : '';
+      addLog(`Produced "${formatMessageLabel(content, offset)}${keyDisplay}" to ${topic.name} [Part-${partition.id}]`, 'success');
       return newTopics;
     });
   }, [msgCounter]);
@@ -453,6 +475,8 @@ const App: React.FC = () => {
                  key={t.id} 
                  topic={t} 
                  onUpdatePartitionLimit={updatePartitionLimit}
+                 consumers={consumers}
+                 partitionAssignments={partitionAssignments}
                />
              ))}
           </div>

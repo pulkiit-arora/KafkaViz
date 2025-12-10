@@ -1,6 +1,7 @@
 
 export interface Message {
   id: string;
+  key?: string; // Optional message key for partitioning
   content: string;
   timestamp: number;
   offset: number;
@@ -11,6 +12,8 @@ export interface Partition {
   messages: Message[];
   maxMessages?: number;
   nextOffset: number; // Tracks the next unique offset to assign
+  leaderBrokerId?: number; // ID of the broker that is the leader for this partition
+  replicaBrokerIds?: number[]; // IDs of broker replicas (including leader)
 }
 
 export interface Topic {
@@ -22,6 +25,14 @@ export interface Topic {
 export interface Producer {
   id: string;
   name: string;
+}
+
+export interface Broker {
+  id: number;
+  name: string;
+  host: string;
+  port: number;
+  isAlive: boolean;
 }
 
 export interface Consumer {

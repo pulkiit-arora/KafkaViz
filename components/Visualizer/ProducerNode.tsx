@@ -6,17 +6,18 @@ import { Button } from '../ui/Button';
 interface ProducerNodeProps {
   producer: Producer;
   topics: Topic[];
-  onProduce: (producerId: string, topicId: string, message: string) => void;
+  onProduce: (producerId: string, topicId: string, message: string, key?: string) => void;
   onRemove: (id: string) => void;
 }
 
 export const ProducerNode: React.FC<ProducerNodeProps> = ({ producer, topics, onProduce, onRemove }) => {
   const [selectedTopic, setSelectedTopic] = useState<string>(topics[0]?.id || '');
+  const [messageKey, setMessageKey] = useState<string>('');
 
   const handleProduce = () => {
     if (!selectedTopic) return;
     const msg = `Msg-${Math.floor(Math.random() * 1000)}`;
-    onProduce(producer.id, selectedTopic, msg);
+    onProduce(producer.id, selectedTopic, msg, messageKey || undefined);
   };
 
   return (
@@ -48,6 +49,14 @@ export const ProducerNode: React.FC<ProducerNodeProps> = ({ producer, topics, on
           {topics.length === 0 && <option>No Topics Available</option>}
           {topics.map(t => <option key={t.id} value={t.id}>Topic: {t.name}</option>)}
         </select>
+
+        <input 
+          type="text"
+          placeholder="Message Key (optional - controls partition)"
+          className="w-full text-sm border-slate-200 rounded-md p-1.5 bg-slate-50"
+          value={messageKey}
+          onChange={(e) => setMessageKey(e.target.value)}
+        />
 
         <Button 
           variant="primary" 

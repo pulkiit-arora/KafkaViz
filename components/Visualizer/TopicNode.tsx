@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
-import { Database, ChevronDown, ChevronUp, Settings, Info, AlertCircle, X, Check } from 'lucide-react';
-import { Topic } from '../../types';
+import { Database, ChevronDown, ChevronUp, Settings, Info, AlertCircle, X, Check, User } from 'lucide-react';
+import { Topic, Consumer } from '../../types';
 import { MessageBlock } from './Message';
 import { MAX_MESSAGES_PER_PARTITION } from '../../constants';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -9,13 +9,28 @@ import { AnimatePresence, motion } from 'framer-motion';
 interface TopicNodeProps {
   topic: Topic;
   onUpdatePartitionLimit?: (topicId: string, partitionId: number, limit: number) => void;
+  consumers?: Consumer[];
+  partitionAssignments?: Record<string, Record<string, Record<number, string | null>>>;
 }
 
-export const TopicNode: React.FC<TopicNodeProps> = ({ topic, onUpdatePartitionLimit }) => {
+export const TopicNode: React.FC<TopicNodeProps> = ({ topic, onUpdatePartitionLimit, consumers = [], partitionAssignments = {} }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [editingPartition, setEditingPartition] = useState<{id: number, limit: number} | null>(null);
 
   const totalMessages = topic.partitions.reduce((acc, p) => acc + p.messages.length, 0);
+
+  // Get assigned consumer for a partition
+  const getAssignedConsumer = (partitionId: number) => {
+    // Check all consumer groups for assignments to this topic
+    for (const groupId in partitionAssignments) {
+      const topicAssignments = partitionAssignments[groupId]?.[topic.id];
+      if (topicAssignments && topicAssignments[partitionId]) {
+        const consumerId = topicAssignments[partitionId];
+        return consumers.find(c => c.id === consumerId);
+      }
+    }
+    return null;
+  };
 
   const handleSaveLimit = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -55,17 +70,26 @@ export const TopicNode: React.FC<TopicNodeProps> = ({ topic, onUpdatePartitionLi
           const limit = partition.maxMessages ?? MAX_MESSAGES_PER_PARTITION;
           const isFull = partition.messages.length >= limit;
           const isEditing = editingPartition?.id === partition.id;
+          const assignedConsumer = getAssignedConsumer(partition.id);
 
           return (
             <div key={partition.id} className="relative group">
                {/* Partition Label */}
-               <div className="absolute left-0 top-0 bottom-0 w-8 flex flex-col items-center justify-center border-r border-slate-600 bg-slate-700/50 rounded-l text-xs font-mono text-slate-400 z-10">
+               <div className="absolute left-0 top-0 bottom-0 w-20 flex flex-col items-center justify-center border-r border-slate-600 bg-slate-700/50 rounded-l text-xs font-mono text-slate-400 z-10">
                   <span className="text-[8px] uppercase opacity-50">Part</span>
                   <span>{partition.id}</span>
+                  {assignedConsumer && (
+                    <div className="mt-1 text-center">
+                      <User size={10} className="mx-auto text-orange-400" />
+                      <span className="text-[8px] text-orange-400 truncate w-16 block" title={assignedConsumer.name}>
+                        {assignedConsumer.name}
+                      </span>
+                    </div>
+                  )}
                </div>
                
                {/* Messages Container */}
-               <div className={`ml-8 min-h-[3.5rem] rounded-r border p-2 flex items-center gap-1 overflow-x-auto scrollbar-thin transition-colors relative
+               <div className={`ml-20 min-h-[3.5rem] rounded-r border p-2 flex items-center gap-1 overflow-x-auto scrollbar-thin transition-colors relative
                  ${isFull ? 'bg-orange-900/20 border-orange-500/30' : 'bg-slate-900/50 border-slate-700 group-hover:bg-slate-900/80'}`}>
                   
                   <AnimatePresence mode='popLayout'>
