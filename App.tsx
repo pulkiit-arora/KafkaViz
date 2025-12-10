@@ -466,16 +466,29 @@ const App: React.FC = () => {
           </div>
           <div className="flex-1 overflow-y-auto pr-2 pb-20">
             {consumers.length === 0 && <p className="text-sm text-slate-400 italic">No consumers active.</p>}
-             {consumers.map(c => (
-              <ConsumerNode 
-                key={c.id} 
-                consumer={c} 
-                topics={topics} 
-                onConsume={handleConsume}
-                onSubscribe={handleSubscribe}
-                onRemove={(id) => removeEntity('consumer', id)}
-              />
-            ))}
+            {/* Group consumers by groupId */}
+            {getUniqueGroups().map(groupId => {
+              const groupConsumers = consumers.filter(c => c.groupId === groupId);
+              return (
+                <div key={groupId} className="mb-4 bg-slate-100 rounded-lg p-3 border border-slate-200">
+                  <h3 className="text-xs font-bold uppercase text-slate-600 mb-3 tracking-wider px-1">
+                    Group: {groupId}
+                  </h3>
+                  <div className="space-y-2">
+                    {groupConsumers.map(c => (
+                      <ConsumerNode 
+                        key={c.id} 
+                        consumer={c} 
+                        topics={topics} 
+                        onConsume={handleConsume}
+                        onSubscribe={handleSubscribe}
+                        onRemove={(id) => removeEntity('consumer', id)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </section>
 
